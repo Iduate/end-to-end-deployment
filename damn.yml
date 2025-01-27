@@ -1,5 +1,5 @@
 ---
-- name: v1 environment setup
+- name: end to end deployment
   hosts: all
   become: yes
   tasks:
@@ -38,9 +38,9 @@
     - name: Change MySQL root password
       mysql_user:
         name: root
-        password: "david01"
-        login_user: root
-        login_password: "david01"
+        password: ""
+        login_user: 
+        login_password: ""
         host: localhost
         state: present
 
@@ -48,45 +48,45 @@
       mysql_db:
         name: mysql
         state: present
-        login_user: root 
-        login_password: 'david01' 
+        login_user: 
+        login_password: '' 
 
     - name: set root password mariadb
       mysql_user:
-        name: root
+        name: 
         host: localhost
-        password: "david01"
-        login_user: root
-        login_password: "david01"
+        password: ""
+        login_user: 
+        login_password: ""
         check_implicit_admin: yes
         state: present
 
     - name: delete remote root
       mysql_user:
         check_implicit_admin: yes
-        login_user: root
-        login_password: "david01"
+        login_user: 
+        login_password: ""
         user: root
         host: "{{ ansible_fqdn }}"
         state: absent
 
     - name: Create admin user with remote access
       mysql_user:
-        name: "david"
-        password: "david01"
+        name: ""
+        password: ""
         priv: '*.*:ALL'
         host: '%'
         append_privs: yes
-        login_user: root
-        login_password: "david01"
+        login_user: 
+        login_password: ""
         state: present
 
     - name: Create database
       mysql_db:
-        name: xerdocshms
+        name: 
         state: present
-        login_user: "david"
-        login_password: "david01"
+        login_user: ""
+        login_password: ""
 
     - name: Add PHP 7.4 PPA repository
       apt_repository:
@@ -119,14 +119,14 @@
 
     - name: clone the xerdocs repo
       git:
-        repo: https://github.com/XerdocsNG/XerdocsHMS.git
+        repo: 
         dest: /var/www/html
 
-    - name: switch to the Logging202412 branch
+    - name: switch to the branch
       git:
-        repo: https://github.com/XerdocsNG/XerdocsHMS.git
+        repo: 
         dest: /var/www/html
-        version: Logging202501
+        version: 
         force: yes
     
     - name: delete the index.html file
@@ -174,14 +174,14 @@
           </Directory>
 
     - name: import sql dump into xerdocshms database
-      shell: mysql -u david -p'david01' xerdocshms < XerdocsHMS_DB
+      shell: mysql -u 'databasename' -p'' 'database' < XerdocsHMS_DB
       args:
         executable: /bin/bash
       ignore_errors: yes
 
     - name: Insert Super Admin group into the groups table
       command: >
-        mysql -u david -p{{ 'david01' }} -h localhost xerdocshms -e "INSERT IGNORE INTO groups (id, name, description) VALUES (1, 'superadmin', '');"
+        mysql -u 'databaseuser' -p{{ '' }} -h localhost 'databasename' -e "INSERT IGNORE INTO groups (id, name, description) VALUES (1, 'superadmin', '');"
 
     - name: Ensure the script is executable
       file:
@@ -190,7 +190,7 @@
         state: file
 
     - name: Run the bash script and capture output
-      command: /root/create_superadmin.sh david
+      command: /root/create_superadmin.sh 'databaseuser'
       register: script_output
       ignore_errors: yes 
 
