@@ -1,0 +1,209 @@
+---
+- name: v1 environment setup
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Apache2
+      apt:
+        name: apache2
+        state: present
+
+    - name: Start and enable Apache2 service
+      systemd:
+        name: apache2
+        state: started
+        enabled: yes
+
+    - name: Install python3-PyMySQL
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Install MariaDB server
+      apt:
+        name: mariadb-server
+        state: present
+
+    - name: Start MariaDB
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Change MySQL root password
+      mysql_user:
+        name: root
+        password: "david01"
+        login_user: root
+        login_password: "david01"
+        host: localhost
+        state: present
+
+    - name: Flush MySQL privileges
+      mysql_db:
+        name: mysql
+        state: present
+        login_user: root 
+        login_password: 'david01' 
+
+    - name: set root password mariadb
+      mysql_user:
+        name: root
+        host: localhost
+        password: "david01"
+        login_user: root
+        login_password: "david01"
+        check_implicit_admin: yes
+        state: present
+
+    - name: delete remote root
+      mysql_user:
+        check_implicit_admin: yes
+        login_user: root
+        login_password: "david01"
+        user: root
+        host: "{{ ansible_fqdn }}"
+        state: absent
+
+    - name: Create admin user with remote access
+      mysql_user:
+        name: "david"
+        password: "david01"
+        priv: '*.*:ALL'
+        host: '%'
+        append_privs: yes
+        login_user: root
+        login_password: "david01"
+        state: present
+
+    - name: Create database
+      mysql_db:
+        name: xerdocshms
+        state: present
+        login_user: "david"
+        login_password: "david01"
+
+    - name: Add PHP 7.4 PPA repository
+      apt_repository:
+        repo: ppa:ondrej/php
+
+    - name: Install PHP 7.4 and modules
+      apt:
+        name:
+          - php7.4
+          - php7.4-cli
+          - php7.4-common
+          - php7.4-mysql
+          - php7.4-opcache
+          - php7.4-json
+          - php7.4-readline
+        state: present
+
+    - name: Configure Apache to prioritize index.php
+      lineinfile:
+        path: /etc/apache2/mods-enabled/dir.conf
+        regexp: '^(\s*)DirectoryIndex'
+        line: '    DirectoryIndex index.php index.html index.cgi index.pl index.xhtml index.htm'
+        backup: no
+        state: present
+
+    - name: make sure the /var/wwww/html directory is empty
+      file:
+        path: /var/www/html
+        state: absent
+
+    - name: clone the xerdocs repo
+      git:
+        repo: https://github.com/XerdocsNG/XerdocsHMS.git
+        dest: /var/www/html
+
+    - name: switch to the Logging202412 branch
+      git:
+        repo: https://github.com/XerdocsNG/XerdocsHMS.git
+        dest: /var/www/html
+        version: Logging202501
+        force: yes
+    
+    - name: delete the index.html file
+      file:
+        path: /var/www/html/index.html
+        state: absent
+
+    - name: delete the database.php file
+      file:
+        path: /var/www/html/application/config/database.php
+        state: absent
+
+    - name: copy the database.php file
+      copy:
+        src: database.php~
+        dest: /var/www/html/application/config/database.php
+
+    - name: Enable Apache rewrite module
+      command: a2enmod rewrite
+
+    - name: Configure .htaccess for URL rewriting
+      copy:
+        dest: /var/www/html/.htaccess
+        content: |
+          RewriteEngine On
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule ^(.*)$ index.php?/$1 [L]
+
+          php_value memory_limit 3000M
+          php_value max_input_vars 5000
+          php_value upload_max_filesize 100M
+          php_value post_max_size 10M
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Allow overrides in Apache default site
+      blockinfile:
+        path: /etc/apache2/sites-enabled/000-default.conf
+        insertafter: '<VirtualHost *:80>'
+        content: |
+          <Directory "/var/www/html">
+            AllowOverride All
+          </Directory>
+
+    - name: import sql dump into xerdocshms database
+      shell: mysql -u david -p'david01' xerdocshms < XerdocsHMS_DB
+      args:
+        executable: /bin/bash
+      ignore_errors: yes
+
+    - name: Insert Super Admin group into the groups table
+      command: >
+        mysql -u david -p{{ 'david01' }} -h localhost xerdocshms -e "INSERT IGNORE INTO groups (id, name, description) VALUES (1, 'superadmin', '');"
+
+    - name: Ensure the script is executable
+      file:
+        path: /root/create_superadmin.sh
+        mode: '0755'
+        state: file
+
+    - name: Run the bash script and capture output
+      command: /root/create_superadmin.sh david
+      register: script_output
+      ignore_errors: yes 
+
+    - name: Show script output
+      debug:
+        msg: "{{ script_output.stdout }}"
+
+    - name: Restart Apache2 after configuration changes
+      service:
+        name: apache2
+        state: restarted
+
+
+
+
+
